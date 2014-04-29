@@ -28,7 +28,7 @@ def drawlines(img1,img2,lines,pts1,pts2,K):
 
 def computeTransformation(F,K):
 	E = K.T.dot(F).dot(K)
-	_, u, v = cv2.SVDecomp(E)
+	_, u, v = cv2.SVDecomp(E,flags = cv2.SVD_FULL_UV)
 	#newD = np.diag(np.array([1,1,0]))
 	#newE = u.dot(newD).dot(v)
 	#_, u, v = cv2.SVDecomp(newE)
@@ -64,10 +64,11 @@ def testFundamentalMatrix(F,pts1,pts2):
 	error = error/(len(pts1),1)[len(pts1)==0]
 	print("RMS error for rank 2 matrix: \t\t" + str(error))
 
-def projectCube(img,P,color=(255,0,255)):
+def projectCube(img,P,pos):
 	r = [-1, 1]
-	scale = 0.2
-	translation = np.array([0,0,5,0])
+	scale = 2
+	color = (255,0,0)
+	translation = np.array([pos[0],pos[1],pos[2],0])
 	for s, e in combinations(np.array(list(product(r,r,r))), 2):
 		if np.sum(np.abs(s-e)) == r[1]-r[0]:
 			start = np.append(s*scale,[1])+translation
@@ -83,14 +84,33 @@ def projectPoint(img,X,P,color=(0,0,255)):
 		smallX = P.dot(X[i])
 		smallX/=smallX[2]
 		pos = tuple(smallX[0:2].astype(int))
-		#if np.random.random()>0.9:
-		#	cv2.putText(img,str(X[i]/X[i][3]), pos, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 255)
+		if np.random.random()>0.9:
+			cv2.putText(img,str(X[i]/X[i][3]), pos, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 255)
 		cv2.circle(img,pos,3,color,0)
+		
+def normalize(npts1):
+	npts1 = npts1[0]
+	centroid = np.zeros(2)
+	for p in npts1:
+		centroid += p/len(npts1)
+	#print(centroid)
+	#npts1-=centroid
+	T = np.identity(3)
+	#T[0][2] = -centroid[0]
+	#T[1][2] = -centroid[1]
+	#print(T)
+	return npts1, T
 
 def triangulatePoints(pts1,pts2,F,P1,P2):
 	pts1 = np.array([pts1[:]])
 	pts2 = np.array([pts2[:]])
 	npts1, npts2 = cv2.correctMatches(F, pts1, pts2)
+	npts1, T = normalize(npts1)
+	npts2, Tprime = normalize(npts2)
+	#P1 = np.copy(P1)
+	#P2 = np.copy(P2)
+	#P1[0:3,0:3] = np.linalg.inv(Tprime).dot(P1[0:3,0:3]).dot(T)
+	#P2[0:3,0:3] = np.linalg.inv(Tprime).dot(P2[0:3,0:3]).dot(T)
 	p11 = P1[0,:]
 	p12 = P1[1,:]
 	p13 = P1[2,:]
@@ -98,14 +118,17 @@ def triangulatePoints(pts1,pts2,F,P1,P2):
 	p22 = P2[1,:]
 	p23 = P2[2,:]
 	X = np.zeros((0,4))
-	for npt1,npt2,pt1,pt2 in zip(npts1[0],npts2[0],pts1[0],pts2[0]):
+	for npt1,npt2 in zip(npts1,npts2):
 		A = np.zeros((0,4))
 		A = np.vstack([A,npt1[0]*p13-p11])
 		A = np.vstack([A,npt1[1]*p13-p12])
 		A = np.vstack([A,npt2[0]*p23-p21])
 		A = np.vstack([A,npt2[1]*p23-p22])
-		d, u, v = cv2.SVDecomp(A)
-		X = np.vstack([X, v[3,:]])
+		
+		d, u, v = cv2.SVDecomp(A,flags = cv2.SVD_FULL_UV)
+		pos = v[3,:]
+		pos /= pos[3]
+		X = np.vstack([X, pos])
 	return X
 
 def showCombinedImgs(img1,img2):
@@ -120,14 +143,11 @@ def createP(K, R=np.identity(3),c=np.zeros(3)):
 	transformTemp = K.dot(R)
 	transform = np.zeros((3,4))
 	transform[:,:-1] = transformTemp
-	c = transformTemp.dot(c)#np.linalg.inv(transformTemp).dot(c)
+	c = K.dot(c)
 	transform[:,-1] = -c[:]
 	return transform
 
 def xInFront(X,rot,trans):
-	X[0]/=X[0][3]
-	if X[0][2]<0:
-		return False
 	tmp = np.array(X[0][0:3])-trans
 	viewVec = rot.dot(np.array([0,0,1]))
 	return tmp.dot(viewVec)>0
@@ -158,6 +178,16 @@ def drawCorrespondences(vis,pts1,pts2):
 	for pt1, pt2 in zip(pts1,pts2):
 		cv2.line(vis, (pt1[0],pt1[1]), (pt2[0],pt2[1]), (255,100,100),1)
 		
+def reprojectionError(X,pts1,pts2,p1,p2):
+	error = 0
+	for x,pt1,pt2 in zip(X,pts1,pts2):
+		px = p1.dot(x)
+		px/= px[2]
+		error += np.linalg.norm(pt1-px[0:2])
+		px = p2.dot(x)
+		px/= px[2]
+		error += np.linalg.norm(pt2-px[0:2])
+	print("Reprojection error: \t\t"+str(error/len(pts1)))
 
 def match(img1, img2, K, distort):
 	img1 = cv2.undistort(img1,K,distort)
@@ -190,11 +220,13 @@ def match(img1, img2, K, distort):
 		X = triangulatePoints(pts1,pts2,F,p1,p2)
 		if xInFront(X,rot,trans):
 			break
-	
+			
+	reprojectionError(X,pts1,pts2,p1,p2)
+	cubePosition = X[0]
 	projectPoint(img5,X,p1)
 	projectPoint(img3,X,p2)
-	projectCube(img5,p1)
-	projectCube(img3,p2)
+	projectCube(img5,p1,cubePosition)
+	projectCube(img3,p2,cubePosition)
 	vis = showCombinedImgs(img5,img3)
 	drawCorrespondences(vis,pts1,pts2)
 	cv2.imshow("test", vis)
@@ -207,11 +239,12 @@ def skipFrames(cap,frames):
 
 def videoMatch(K,distort):
 	cap = cv2.VideoCapture('test/test.mp4')
+	#cap = cv2.VideoCapture('test/test.wmv')
 	skipFrames(cap,0)
 	while cap.isOpened() and cap.get(1)+52<cap.get(7):
 		print("Current Frame: "+ str(cap.get(1))+"/"+ str(cap.get(7)))
 		ret, firstFrame = cap.read()
-		skipFrames(cap,40)
+		skipFrames(cap,30)
 		ret, secondFrame = cap.read()
 		match(firstFrame.copy(),secondFrame.copy(),K,distort)
 		if cv2.waitKey(0)==ord('q'):
