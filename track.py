@@ -2,11 +2,13 @@
 import numpy as np
 from scipy import optimize
 import cv2
-import cv2.cv as cv
 from itertools import product, combinations
 import correspondences
 import computervision
 import plotter
+import patch
+import time
+from random import randint
 
 def readCalibrationData(configFile):
 	f = open(configFile,'r')
@@ -43,7 +45,7 @@ def testFundamentalMatrix(F,pts1,pts2):
 
 def projectCube(img,P,pos):
 	r = [-1, 1]
-	scale = 2
+	scale = 0.2
 	color = (255,0,0)
 	translation = np.array([pos[0],pos[1],pos[2],0])
 	for s, e in combinations(np.array(list(product(r,r,r))), 2):
@@ -93,18 +95,26 @@ def reprojectionError(X,pts1,pts2,p1,p2):
 	
 def match(img1, img2, K, distort):
 	#plotter.plot2(img1)
+	timeStart = time.time()
 	img1 = cv2.undistort(img1,K,distort)
 	img2 = cv2.undistort(img2,K,distort)
-	pts1, pts2 = correspondences.getCorrespondences(img1,img2)
+	pts1, pts2, des1, des2 = correspondences.getCorrespondences(img1,img2)
+	print("Time for correspondences: "+str(time.time()-timeStart))
 	if(len(pts1)<8):
 		print("ERROR: <8 correspondeces")
 		return
+	timeStart = time.time()
 	F, mask = computervision.findFundamentalMatrix(K,pts1,pts2)
+	print("Time for Fundamental: "+str(time.time()-timeStart))
 	#F = F/np.linalg.norm(F)
 	pts1 = pts1[mask.ravel()==1]
 	pts2 = pts2[mask.ravel()==1]
+	des1 = [des1[ind] for ind, x in enumerate(mask) if x==1]
+	des2 = [des2[ind] for ind, x in enumerate(mask) if x==1]
+	timeStart = time.time()
 	if(pts1.shape[0]>8):
 		F = computervision.nonlinearOptimizationFundamental(F,K,pts1,pts2)
+	print("Time for nonlinearOptimizationFundamental: "+str(time.time()-timeStart))
 
 	testFundamentalMatrix(F,pts1,pts2)
 	lines1 = cv2.computeCorrespondEpilines(pts2.reshape(-1,1,2), 2,F)
@@ -126,6 +136,7 @@ def match(img1, img2, K, distort):
 	vis = showCombinedImgs(img5,img3)
 	drawCorrespondences(vis,pts1,pts2)
 	cv2.imshow("test", vis)
+	return patch.makePatches(pts1,pts2,X,des1,des2)
 
 def skipFrames(cap,frames):
 	skipFr = frames
@@ -144,9 +155,74 @@ def videoMatch(calibFile,videoFile):
 		ret, firstFrame = cap.read()
 		skipFrames(cap,50)
 		ret, secondFrame = cap.read()
-		match(firstFrame.copy(),secondFrame.copy(),K,distort)
+		patches = match(firstFrame.copy(),secondFrame.copy(),K,distort)
+		print(patches)
 		if cv2.waitKey(0)==ord('q'):
 			print("quit")
+			break
+	cap.release()
+
+def videoMatch2(calibFile,videoFile,startFrame,endFrame):
+	K, distort  = readCalibrationData(calibFile)
+	print(K)
+	print(distort)
+	cap = cv2.VideoCapture(videoFile)
+	skipFrames(cap,startFrame)
+	print("Current Frame: "+ str(cap.get(1))+"/"+ str(cap.get(7)))
+	ret, firstFrame = cap.read()
+	skipFrames(cap,endFrame-startFrame)
+	ret, secondFrame = cap.read()
+	patches = match(firstFrame.copy(),secondFrame.copy(),K,distort)
+	cubePositions = [p.x for i,p in enumerate(patches) if i>20 and i<30] #np.array([0,0,50,1])#
+	print(patches)
+	cap.set(1,0)
+	for frame in range(startFrame,int(cap.get(7))):
+		ret, img = cap.read()
+		corr = correspondences.getPatchCorrespondences(patches,img)
+		for c in corr:
+			cv2.circle(img, tuple(c[0].astype(int)),3, (0,0,255),-1)
+			cv2.line(img, tuple(c[0].astype(int)), tuple(c[1].pt1.astype(int)), (0,0,255),1)
+		if(len(corr)>7):
+			p = computervision.findTransformation(K, distort, corr)
+			for cube in cubePositions:
+				projectCube(img,p,cube)
+		cv2.imshow("test2", img)
+		cv2.waitKey(1)
+	cap.release()
+	
+	
+def cameraMatch(calibFile):
+	K, distort  = readCalibrationData(calibFile)
+	print(K)
+	print(distort)
+	cap = cv2.VideoCapture(0)
+	while(True):
+		ret, firstFrame = cap.read()
+		cv2.imshow("test2", firstFrame)
+		if cv2.waitKey(1)!=-1:
+			break
+	print("first pic taken")
+	while(True):
+		ret, secondFrame = cap.read()
+		cv2.imshow("test2", secondFrame)
+		if cv2.waitKey(1)!=-1:
+			break
+	print("second pic taken")
+	patches = match(firstFrame.copy(),secondFrame.copy(),K,distort)
+	cubePositions = [p.x for i,p in enumerate(patches) if randint(0,1)==0] #np.array([0,0,50,1])#
+	#print(patches)
+	while(True):
+		ret, img = cap.read()
+		corr = correspondences.getPatchCorrespondences(patches,img)
+		for c in corr:
+			cv2.circle(img, tuple(c[0].astype(int)),3, (0,0,255),-1)
+			cv2.line(img, tuple(c[0].astype(int)), tuple(c[1].pt1.astype(int)), (0,0,255),1)
+		if(len(corr)>7):
+			p = computervision.findTransformation(K, distort, corr)
+			for cube in cubePositions:
+				projectCube(img,p,cube)
+		cv2.imshow("test2", img)
+		if cv2.waitKey(1)!=-1:
 			break
 	cap.release()
 	
@@ -158,9 +234,12 @@ if __name__ == '__main__':
 	cv2.namedWindow('test')
 	cv2.moveWindow('test',0,0)
 	#videoMatch('calib.cfg','test/test.wmv')
-	#videoMatch('calib.cfg','test/test.mp4')
-	#videoMatch('calib3.cfg','test/teatime2.wmv')
+	#videoMatch2('calib.cfg','test/test.mp4',0,100)
+	#videoMatch('calib3.cfg','test/teatime2.mp4')
+	#videoMatch2('calib3.cfg','test/teatime2.mp4',0,30)
+	#videoMatch2('calib.cfg','test/test.wmv',100,150)
+	cameraMatch('calib.cfg')
 	#imageMatch('calib2.cfg','test/test1.jpg','test/test2.jpg')
-	imageMatch('calib2.cfg','templeRing/templeR0001.png','templeRing/templeR0003.png')
+	#imageMatch('calib2.cfg','templeRing/templeR0001.png','templeRing/templeR0003.png')
 	cv2.waitKey(0)
 	cv2.destroyAllWindows()

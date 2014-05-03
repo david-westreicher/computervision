@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 from itertools import product
 from scipy import optimize
+import plotter
+
 
 def findFundamentalMatrix(K,pts1,pts2):
 	return cv2.findFundamentalMat(pts1,pts2,cv2.FM_RANSAC,1)
@@ -74,6 +76,7 @@ def leasSQfundamentalError(optimizeVector,K,pts1,pts2):
 	F = u.dot(np.diag(np.array([d[0][0],d[1][0],0]))).dot(v)
 	p1, p2, X, rot, trans = getCameraMatrix(F,K,pts1,pts2)
 						
+	#plotter.plot(rot,trans,X,img1,pts1)
 	error = np.array([])
 	for x,pt1,pt2 in zip(X,pts1,pts2):
 		currentError = 0
@@ -120,3 +123,11 @@ def getCameraMatrix(F,K,pts1,pts2):
 		#else:
 		#	print("not in front")
 	return p1, p2, X, rot, trans
+
+def findTransformation(K, distort, corr):
+	objPoints = np.asarray([c[1].x[0:3] for c in corr],dtype=np.float32)
+	imgPoints = np.asarray([c[0] for c in corr],dtype=np.float32)
+	rvec,tvec,inliers = cv2.solvePnPRansac(objPoints,imgPoints,K,distort)
+	rot,_ = cv2.Rodrigues(rvec)
+	trans = -tvec[:,0]
+	return createP(K,rot,trans)

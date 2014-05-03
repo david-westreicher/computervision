@@ -28,7 +28,6 @@ def drawCamera(ax,rot = np.identity(3),trans = np.zeros(3)):
 
 def bgThread(rot,trans,bigX,img1,pts1):
 	print("bGthread")
-	mpl.rcParams['legend.fontsize'] = 10
 	fig = plt.figure()
 	ax = fig.gca(projection='3d')
 	ax.set_aspect('equal')
@@ -56,6 +55,7 @@ def bgThread(rot,trans,bigX,img1,pts1):
 		color = img1[pts1[i][1]][pts1[i][0]]/255.0
 		ax.scatter(bigX[i][0],bigX[i][1],bigX[i][2],color=[[color[2],color[1],color[0]]],s=10)
 	plt.show(True)
+	
 
 def plot(rot,trans,X,img1,pts1):
 	#p=mp.Process(target=bgThread,args=(rot,trans,X,img1,pts1,))
