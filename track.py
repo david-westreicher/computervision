@@ -6,6 +6,7 @@ import cv2.cv as cv
 from itertools import product, combinations
 import correspondences
 import computervision
+import plotter
 
 def readCalibrationData(configFile):
 	f = open(configFile,'r')
@@ -89,14 +90,12 @@ def reprojectionError(X,pts1,pts2,p1,p2):
 		sampleError = np.linalg.norm(pt2-px[0:2])
 		error += sampleError**2
 	print("Reprojection error: \t\t"+str(error/len(pts1)))
-
+	
 def match(img1, img2, K, distort):
+	#plotter.plot2(img1)
 	img1 = cv2.undistort(img1,K,distort)
 	img2 = cv2.undistort(img2,K,distort)
 	pts1, pts2 = correspondences.getCorrespondences(img1,img2)
-	#vis = showCombinedImgs(img1,img2)
-	#drawCorrespondences(vis,pts1,pts2)
-	#cv2.imshow("test", vis)
 	if(len(pts1)<8):
 		print("ERROR: <8 correspondeces")
 		return
@@ -117,6 +116,7 @@ def match(img1, img2, K, distort):
 	
 	p1, p2, X, rot, trans = computervision.getCameraMatrix(F,K,pts1,pts2)
 	print("Translation: "+str(trans))
+	plotter.plot(rot,trans,X,img1,pts1)
 	reprojectionError(X,pts1,pts2,p1,p2)
 	cubePosition = X[0]#np.array([0,0,50,1])#
 	projectPoint(img5,X,p1)
@@ -133,9 +133,11 @@ def skipFrames(cap,frames):
 		skipFr=skipFr-1
 		cap.read()
 
-def videoMatch(K,distort):
-	cap = cv2.VideoCapture('test/test.mp4')
-	#cap = cv2.VideoCapture('test/test.wmv')
+def videoMatch(calibFile,videoFile):
+	K, distort  = readCalibrationData(calibFile)
+	print(K)
+	print(distort)
+	cap = cv2.VideoCapture(videoFile)
 	skipFrames(cap,0)
 	while cap.isOpened() and cap.get(1)+52<cap.get(7):
 		print("Current Frame: "+ str(cap.get(1))+"/"+ str(cap.get(7)))
@@ -148,24 +150,17 @@ def videoMatch(K,distort):
 			break
 	cap.release()
 	
+def imageMatch(calibFile,imgFile1,imgFile2):
+	K, distort  = readCalibrationData(calibFile)
+	match(cv2.imread(imgFile1),cv2.imread(imgFile2),K,distort)
 
 if __name__ == '__main__':
 	cv2.namedWindow('test')
 	cv2.moveWindow('test',0,0)
-	K, distort  = readCalibrationData('calib.cfg')
-	#K, distort  = readCalibrationData('calib2.cfg')
-	#K, distort  = readCalibrationData('calib3.cfg')
-	print(K)
-	print(distort)
-	#K, distort  = readCalibrationData('calib2.cfg')
-	videoMatch(K,distort)
-	#match(cv2.imread('test/test1.jpg'),cv2.imread('test/test2.jpg'),K,distort)
-	#match(cv2.imread('calib_images/calib01.jpg'),cv2.imread('calib_images/calib03.jpg'),K,distort)
-	#match(cv2.imread('templeRing/templeR0001.png'),cv2.imread('templeRing/templeR0004.png'),K,distort)
-	#match(cv2.imread('uky/library1.jpg'),cv2.imread('uky/library2.jpg'),K,distort)
+	#videoMatch('calib.cfg','test/test.wmv')
+	#videoMatch('calib.cfg','test/test.mp4')
+	#videoMatch('calib3.cfg','test/teatime2.wmv')
+	#imageMatch('calib2.cfg','test/test1.jpg','test/test2.jpg')
+	imageMatch('calib2.cfg','templeRing/templeR0001.png','templeRing/templeR0003.png')
 	cv2.waitKey(0)
 	cv2.destroyAllWindows()
-
-
-
-

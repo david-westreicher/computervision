@@ -62,44 +62,6 @@ def computeTransformation(F,K):
 	trans2 = -trans1
 	return rot1, rot2, trans1, trans2
 		
-def normalizePoints(K,pts):
-	Kinv = np.linalg.inv(K)
-	for i in range(pts.shape[0]):
-		tmp = np.array([pts[i][0],pts[i][1],1])
-		tmp = Kinv.dot(tmp)
-		tmp /= tmp[2]
-		pts[i][0:2] = tmp[0:2]
-	
-def decomposeVector(optimizeVector):
-	rodrigues = optimizeVector[0:3]
-	rot = cv2.Rodrigues(rodrigues)[0]
-	trans = optimizeVector[3:6]
-	#X = optimizeVector[6:].reshape((-1,3))
-	#homX = np.zeros((X.shape[0],4))
-	#homX[:,:-1] = X
-	#homX[:,3] = 1
-	#print(homX)
-	return rot,trans
-	
-	
-def leasSQreprojectionError(optimizeVector,X,K,pts1,pts2):
-	rot,trans = decomposeVector(optimizeVector)
-	p1 = createP(K)
-	p2 = createP(K,rot,trans)
-	error = np.array([])
-	for x,pt1,pt2 in zip(X,pts1,pts2):
-		sampleError = 0
-		px = p1.dot(x)
-		px/= px[2]
-		sampleError += np.linalg.norm(pt1-px[0:2])
-		px = p2.dot(x)
-		px/= px[2]
-		sampleError += np.linalg.norm(pt2-px[0:2])
-		error = np.append(error,[sampleError*sampleError])
-	#print("sum of error: "+str(np.linalg.norm(error)/(pts1.shape[0])))
-	return error
-	
-
 def xInFront(X,rot,trans):
 	tmp = np.array(X[0][0:3])-trans
 	viewVec = rot.dot(np.array([0,0,1]))
@@ -124,7 +86,7 @@ def leasSQfundamentalError(optimizeVector,K,pts1,pts2):
 		sampleError = np.linalg.norm(pt2-px[0:2])
 		currentError += sampleError**2
 		error = np.append(error,[currentError])
-	print("sum of error: "+str(np.sum(error)/(pts1.shape[0])))
+	#print("sum of error: "+str(np.sum(error)/(pts1.shape[0])))
 	return error
 	
 def createP(K, R=np.identity(3),c=np.zeros(3)):
@@ -135,14 +97,6 @@ def createP(K, R=np.identity(3),c=np.zeros(3)):
 	c = K.dot(c)
 	transform[:,-1] = -c[:]
 	return transform
-	
-def nonlinearOptimization(K,rot,trans,X,pts1,pts2):
-	rodrigues = cv2.Rodrigues(rot)[0].reshape(1,3)
-	optimizeVector = np.append(rodrigues,trans)
-	#optimizeVector = np.append(optimizeVector,X[:,0:3])
-	optimizeVector = optimize.leastsq(leasSQreprojectionError,optimizeVector,args=(X,K,pts1,pts2))
-	rot,trans = decomposeVector(optimizeVector[0])
-	return createP(K,rot,trans), X
 	
 def nonlinearOptimizationFundamental(F,K,pts1,pts2):
 	optimizeVector = F.reshape((-1,))
@@ -166,28 +120,3 @@ def getCameraMatrix(F,K,pts1,pts2):
 		#else:
 		#	print("not in front")
 	return p1, p2, X, rot, trans
-			
-def normalize(npts1):
-	npts1 = npts1[0]
-	centroid = np.zeros(2)
-	for p in npts1:
-		centroid += p/len(npts1)
-	#print(centroid)
-	#npts1-=centroid
-	T = np.identity(3)
-	#T[0][2] = -centroid[0]
-	#T[1][2] = -centroid[1]
-	#print(T)
-	return npts1, T
-		
-def unNormalizePoints(K,pts):
-	pts = pts[0]
-	print(pts)
-	Kinv = np.linalg.inv(K)
-	for i in range(pts.shape[0]):
-		tmp = np.array([pts[i][0],pts[i][1],1])
-		tmp = K.dot(tmp)
-		tmp /= tmp[2]
-		pts[i][0:2] = tmp[0:2]
-	print(pts)
-	return pts
