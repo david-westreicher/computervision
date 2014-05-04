@@ -173,19 +173,22 @@ def videoMatch2(calibFile,videoFile,startFrame,endFrame):
 	skipFrames(cap,endFrame-startFrame)
 	ret, secondFrame = cap.read()
 	patches = match(firstFrame.copy(),secondFrame.copy(),K,distort)
-	cubePositions = [p.x for i,p in enumerate(patches) if i>20 and i<30] #np.array([0,0,50,1])#
-	print(patches)
-	cap.set(1,0)
+	cubePositions = [p.x for i,p in enumerate(patches) if randint(0,3)==0] #np.array([0,0,50,1])#
+	#print(patches)
+	#cv2.waitKey(0)
+	cap.set(1,startFrame)
 	for frame in range(startFrame,int(cap.get(7))):
 		ret, img = cap.read()
+		img = cv2.undistort(img,K,distort)
 		corr = correspondences.getPatchCorrespondences(patches,img)
-		for c in corr:
-			cv2.circle(img, tuple(c[0].astype(int)),3, (0,0,255),-1)
-			cv2.line(img, tuple(c[0].astype(int)), tuple(c[1].pt1.astype(int)), (0,0,255),1)
+		#for c in corr:
+		#	cv2.circle(img, tuple(c[0].astype(int)),3, (0,0,255),-1)
+		#	cv2.line(img, tuple(c[0].astype(int)), tuple(c[1].pt1.astype(int)), (0,0,255),1)
 		if(len(corr)>7):
-			p = computervision.findTransformation(K, distort, corr)
+			p = computervision.findTransformation(K, corr)
 			for cube in cubePositions:
 				projectCube(img,p,cube)
+		cv2.imwrite("out/"+str(frame)+".png",img)
 		cv2.imshow("test2", img)
 		cv2.waitKey(1)
 	cap.release()
@@ -213,12 +216,13 @@ def cameraMatch(calibFile):
 	#print(patches)
 	while(True):
 		ret, img = cap.read()
+		img = cv2.undistort(img,K,distort)
 		corr = correspondences.getPatchCorrespondences(patches,img)
-		for c in corr:
-			cv2.circle(img, tuple(c[0].astype(int)),3, (0,0,255),-1)
-			cv2.line(img, tuple(c[0].astype(int)), tuple(c[1].pt1.astype(int)), (0,0,255),1)
+		#for c in corr:
+		#	cv2.circle(img, tuple(c[0].astype(int)),3, (0,0,255),-1)
+		#	cv2.line(img, tuple(c[0].astype(int)), tuple(c[1].pt1.astype(int)), (0,0,255),1)
 		if(len(corr)>7):
-			p = computervision.findTransformation(K, distort, corr)
+			p = computervision.findTransformation(K, corr)
 			for cube in cubePositions:
 				projectCube(img,p,cube)
 		cv2.imshow("test2", img)
@@ -234,10 +238,10 @@ if __name__ == '__main__':
 	cv2.namedWindow('test')
 	cv2.moveWindow('test',0,0)
 	#videoMatch('calib.cfg','test/test.wmv')
-	#videoMatch2('calib.cfg','test/test.mp4',0,100)
+	#videoMatch2('calib.cfg','test/test.mp4',400,450)
 	#videoMatch('calib3.cfg','test/teatime2.mp4')
 	#videoMatch2('calib3.cfg','test/teatime2.mp4',0,30)
-	#videoMatch2('calib.cfg','test/test.wmv',100,150)
+	#videoMatch2('calib.cfg','test/test.wmv',200,250)
 	cameraMatch('calib.cfg')
 	#imageMatch('calib2.cfg','test/test1.jpg','test/test2.jpg')
 	#imageMatch('calib2.cfg','templeRing/templeR0001.png','templeRing/templeR0003.png')

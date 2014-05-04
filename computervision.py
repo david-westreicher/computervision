@@ -124,10 +124,10 @@ def getCameraMatrix(F,K,pts1,pts2):
 		#	print("not in front")
 	return p1, p2, X, rot, trans
 
-def findTransformation(K, distort, corr):
+def findTransformation(K, corr):
 	objPoints = np.asarray([c[1].x[0:3] for c in corr],dtype=np.float32)
 	imgPoints = np.asarray([c[0] for c in corr],dtype=np.float32)
-	rvec,tvec,inliers = cv2.solvePnPRansac(objPoints,imgPoints,K,distort)
+	rvec,tvec,inliers = cv2.solvePnPRansac(objPoints,imgPoints,K,None)
 	rot,_ = cv2.Rodrigues(rvec)
 	trans = -tvec[:,0]
 	return createP(K,rot,trans)
